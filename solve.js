@@ -2,6 +2,7 @@ export function run(input) {
   const t = String(input.text), header = input.header === true, n = t.length;
   const errors = [], rows = [];
   let columns = null, width = -1, pos = n > 0 && t.charCodeAt(0) === 0xfeff ? 1 : 0, line = 1;
+  let nc = -1, nl = -1, nr = -1, nq = -1;
   for (;;) {
     while (pos < n) {
       const c = t.charCodeAt(pos);
@@ -20,26 +21,30 @@ export function run(input) {
       if (q) {
         const o = pos;
         let p = o + 1, s = p, qv = '', ln = line, ok = false;
-        while (p < n) {
-          const c = t.charCodeAt(p);
-          if (c > 34) { p++; continue; }
-          if (c === 34) {
-            if (t.charCodeAt(p + 1) === 34) { qv += t.slice(s, p + 1); s = p += 2; continue; }
-            qv += t.slice(s, p++);
+        for (;;) {
+          if (nq < p) { nq = t.indexOf('"', p); if (nq < 0) nq = n; }
+          if (nq >= n) break;
+          if (nr < p) { nr = t.indexOf('\r', p); if (nr < 0) nr = n; }
+          if (nl < p) { nl = t.indexOf('\n', p); if (nl < 0) nl = n; }
+          if (nq < nr && nq < nl) {
+            if (t.charCodeAt(nq + 1) === 34) { qv += t.slice(s, nq + 1); s = p = nq + 2; continue; }
+            qv += t.slice(s, nq);
+            p = nq + 1;
             ok = true;
             break;
           }
-          if (c === 13) {
-            qv += t.slice(s, p) + '\n';
+          if (nr < nl) {
+            qv += t.slice(s, nr) + '\n';
             ln++;
-            s = p += t.charCodeAt(p + 1) === 10 ? 2 : 1;
-            continue;
+            s = p = t.charCodeAt(nr + 1) === 10 ? nr + 2 : nr + 1;
+          } else {
+            ln++;
+            p = nl + 1;
           }
-          if (c === 10) ln++;
-          p++;
         }
         if (!ok) {
           pos = o + 1;
+          nc = nl = nr = nq = -1;
           errors.push({ code: 'unterminated_quote', line: rl, row: rr });
           pre = '"';
         } else {
@@ -55,20 +60,18 @@ export function run(input) {
       }
       if (v === undefined) {
         let s = pos, k = 0;
-        while (pos < n) {
-          const c = t.charCodeAt(pos);
-          if (c > 44) { pos++; continue; }
-          if (c === 44) { end = 0; break; }
-          if (c === 10) { end = 1; break; }
-          if (c === 13) {
-            if (t.charCodeAt(pos + 1) === 10) { end = 1; break; }
-            errors.push({ code: 'stray_cr', line: rl, row: rr });
-            k += pos - s;
-            pre = pre === null ? t.slice(s, pos) : pre + t.slice(s, pos);
-            s = ++pos;
-            continue;
-          }
-          pos++;
+        for (;;) {
+          if (nc < pos) { nc = t.indexOf(',', pos); if (nc < 0) nc = n; }
+          if (nl < pos) { nl = t.indexOf('\n', pos); if (nl < 0) nl = n; }
+          if (nr < pos) { nr = t.indexOf('\r', pos); if (nr < 0) nr = n; }
+          if (nc < nl && nc < nr) { pos = nc; end = 0; break; }
+          if (nl < nr) { pos = nl; end = nl < n ? 1 : 2; break; }
+          if (nr >= n) { pos = n; break; }
+          if (t.charCodeAt(nr + 1) === 10) { pos = nr; end = 1; break; }
+          errors.push({ code: 'stray_cr', line: rl, row: rr });
+          k += nr - s;
+          pre = pre === null ? t.slice(s, nr) : pre + t.slice(s, nr);
+          s = pos = nr + 1;
         }
         k += pos - s;
         v = pre === null ? t.slice(s, pos) : pre + t.slice(s, pos);
